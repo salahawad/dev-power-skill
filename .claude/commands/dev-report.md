@@ -1,5 +1,5 @@
 ---
-description: Generate a developer efficiency report from GitLab/GitHub + Jira data. Usage: /dev-report [--period=90] [--output=developer_efficiency_report.md]
+description: Generate a developer efficiency report from GitLab/GitHub + Jira data. Usage: /dev-report [--devs="Alice,Bob"] [--period=90] [--output=developer_efficiency_report.md]
 ---
 
 # Developer Efficiency Report Generator
@@ -22,8 +22,18 @@ First, check for a `.env` file in the project root. Extract these variables:
 | `JIRA_URL` | Yes | e.g. `https://company.atlassian.net` |
 | `JIRA_PROJECT` | Yes | Jira project key, e.g. `DEV` |
 | `REPORT_PERIOD_DAYS` | No | Default: 90 |
+| `REPORT_DEVS` | No | Comma-separated developer names to include. Empty = all developers |
 
-If any variable is missing from `.env`, check `$ARGUMENTS` for overrides (e.g., `--period=90`). If still missing, **ask the user** for the required values before proceeding.
+If any variable is missing from `.env`, check `$ARGUMENTS` for overrides (e.g., `--period=90`, `--devs="Alice,Bob,Charlie"`). If still missing, **ask the user** for the required values before proceeding.
+
+### Developer filtering
+
+If `--devs` is provided (or `REPORT_DEVS` is set), only include those developers in the report. Match against:
+
+1. Git author name (case-insensitive, partial match)
+2. Jira assignee display name (case-insensitive, partial match)
+
+If neither is set, **auto-discover all developers** from the Jira project and Git commit history, then ask the user to confirm the list before proceeding. This prevents including bot accounts, CI users, or former team members.
 
 ### Detect platform
 
@@ -698,6 +708,8 @@ Write the report to the file specified in `$ARGUMENTS` (default: `developer_effi
 
 If the user just runs `/dev-report` with no arguments, check `.env` for all required variables. If `.env` has `GITLAB_TOKEN`/`GITHUB_TOKEN` and `JIRA_TOKEN`, auto-detect the platform and run. Otherwise prompt for missing config.
 
+If `--devs` is provided, filter to only those developers. If omitted and `REPORT_DEVS` is not set, auto-discover all developers from Jira assignees and Git commit authors, present the combined list to the user, and ask them to confirm or adjust before proceeding.
+
 Typical `.env` setup:
 
 ```env
@@ -708,5 +720,5 @@ JIRA_PROJECT=DEV
 JIRA_EMAIL=user@company.com
 JIRA_TOKEN=ATATT3xFfGF0xxxx
 REPORT_PERIOD_DAYS=90
-
+# REPORT_DEVS=Alice,Bob,Charlie
 ```
