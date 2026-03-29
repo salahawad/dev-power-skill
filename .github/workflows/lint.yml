@@ -1,0 +1,120 @@
+---
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint markdown files
+        uses: DavidAnson/markdownlint-cli2-action@v19
+        with:
+          globs: "**/*.md"
+
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint YAML files
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: .github/workflows/
+          config_data: |
+            extends: default
+            rules:
+              line-length:
+                max: 120
+              truthy:
+                check-keys: false
+
+  skill-validate:
+    name: Validate Skill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check skill frontmatter
+        run: |
+          SKILL=".claude/commands/dev-report.md"
+          echo "Checking $SKILL exists..."
+          test -f "$SKILL" || { echo "FAIL: Skill file not found"; exit 1; }
+
+          echo "Checking frontmatter..."
+          head -1 "$SKILL" | grep -q "^---$" || { echo "FAIL: Missing frontmatter start"; exit 1; }
+
+          # Check description field exists
+          grep -q "^description:" "$SKILL" || { echo "FAIL: Missing description field"; exit 1; }
+
+          # Check frontmatter is closed
+          tail -n +2 "$SKILL" | grep -q "^---$" || { echo "FAIL: Missing frontmatter end"; exit 1; }
+
+          echo "PASS: Skill file is valid"
+
+  env-example-check:
+    name: Validate .env.example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required variables are documented
+        run: |
+          ENV=".env.example"
+          echo "Checking $ENV exists..."
+          test -f "$ENV" || { echo "FAIL: .env.example not found"; exit 1; }
+
+          for var in GIT_HOST_URL JIRA_URL JIRA_PROJECT JIRA_EMAIL JIRA_TOKEN; do
+            grep -q "^$var=" "$ENV" || grep -q "^# $var=" "$ENV" || {
+              echo "FAIL: Missing $var in .env.example"
+              exit 1
+            }
+          done
+
+          echo "PASS: All required variables documented"
+
+  no-secrets:
+    name: No Secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for leaked secrets
+        run: |
+          echo "Checking for potential secrets..."
+          PATTERNS=(
+            'glpat-[A-Za-z0-9_-]{20}'
+            'ghp_[A-Za-z0-9]{36}'
+            'github_pat_[A-Za-z0-9_]{82}'
+            'ATATT3xFfGF0[A-Za-z0-9_=-]{50}'
+            'xoxb-[0-9]{10,}'
+          )
+          FOUND=0
+          for pat in "${PATTERNS[@]}"; do
+            MATCHES=$(grep -rE "$pat" \
+              --include="*.md" --include="*.yml" \
+              --include="*.json" --include="*.env" \
+              . 2>/dev/null | grep -v ".env.example" \
+              | grep -v ".git/" || true)
+            if [ -n "$MATCHES" ]; then
+              echo "$MATCHES"
+              echo "WARN: Possible secret matching $pat"
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "FAIL: Potential secrets found"
+            exit 1
+          fi
+          echo "PASS: No secrets detected"
